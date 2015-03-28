@@ -7,15 +7,17 @@
             <ColumnDefinition Width="22*"/>
             <ColumnDefinition Width="25*"/>
         </Grid.ColumnDefinitions>
-        <Button x:Name="InitializeButton" Content="Init Device" IsEnabled="True" HorizontalAlignment="Left" Margin="175,275,0,0" VerticalAlignment="Top" Width="75" Grid.Column="1" Click="OnInitializeDevice"/>
-        <ListBox x:Name="DiscoveredDevicesList" HorizontalAlignment="Left" Height="186" Margin="92,70,0,0" VerticalAlignment="Top" Width="146" Grid.Column="1"/>
-        <Label Content="Discovered Locks" HorizontalAlignment="Center" Margin="92,39,37,0" VerticalAlignment="Top" Width="146" Grid.Column="1"/>
-        <Button x:Name="LoginButton" Content="Login" HorizontalAlignment="Left" Margin="18,275,0,0" VerticalAlignment="Top" Width="75" Click="OnLogin"/>
-        <TextBlock x:Name="StatusOutput" HorizontalAlignment="Left" Margin="29,97,0,0" TextWrapping="Wrap" Text="Waiting Login" VerticalAlignment="Top" Grid.ColumnSpan="2" Height="173" Width="274"/>
-        <TextBox x:Name="MqttServerText" HorizontalAlignment="Left" Height="23" Margin="93,27,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="210" IsReadOnlyCaretVisible="True" Grid.ColumnSpan="2" ToolTip="ip address or domain"/>
+        <Button x:Name="InitializeButton" Content="Init Lock" IsEnabled="False" HorizontalAlignment="Left" Margin="10,133,0,0" VerticalAlignment="Top" Width="94" Grid.Column="1" Click="OnInitializeDevice"/>
+        <ListBox x:Name="DiscoveredDevicesList" HorizontalAlignment="Left" Height="186" Margin="109,70,0,0" VerticalAlignment="Top" Width="146" Grid.Column="1"/>
+        <Label x:Name="DeviceListTitle" Content="Discovered Locks" HorizontalAlignment="Center" Margin="120,44,9,0" VerticalAlignment="Top" Width="146" Grid.Column="1"/>
+        <Button x:Name="LoginButton" Content="Login" HorizontalAlignment="Left" Margin="180,282,0,0" VerticalAlignment="Top" Width="75" Click="OnLogin" Grid.Column="1"/>
+        <TextBox x:Name="MqttServerText" Text="54.152.119.236" HorizontalAlignment="Left" Height="23" Margin="93,27,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="149" IsReadOnlyCaretVisible="True" ToolTip="ip address or domain"/>
         <Label Content="mqtt server" HorizontalAlignment="Center" Margin="10,25,149,0" VerticalAlignment="Top" Width="83"/>
         <Label Content="mqtt port" HorizontalAlignment="Center" Margin="10,50,149,0" VerticalAlignment="Top" Width="83"/>
         <TextBox x:Name="MqttPortText" Text="1883" HorizontalAlignment="Left" Height="23" Margin="93,52,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="71" IsReadOnlyCaretVisible="True" ToolTip="must be a number"/>
-        <Button x:Name="FindDevicesButton" Content="Find Devices" HorizontalAlignment="Left" Margin="73,275,0,0" VerticalAlignment="Top" Width="75" Grid.Column="1" Click="OnFindDevices" IsEnabled="false"/>
+        <Button x:Name="FindDevicesButton" Content="Find New Locks" HorizontalAlignment="Left" Margin="9,106,0,0" VerticalAlignment="Top" Width="94" Grid.Column="1" Click="OnFindDevices" IsEnabled="false"/>
+        <Button x:Name="ClearLockButton" Content="Clear Lock" IsEnabled="False" HorizontalAlignment="Left" Margin="10,201,0,0" VerticalAlignment="Top" Width="94" Grid.Column="1" Click="OnClearDevice"/>
+        <Button x:Name="ListCurrentLocksButton" Content="List Current Locks" HorizontalAlignment="Left" Margin="9,175,0,0" VerticalAlignment="Top" Width="94" Grid.Column="1" Click="OnListDevices" IsEnabled="false"/>
+        <ListBox x:Name="LogList" HorizontalAlignment="Left" Height="204" Margin="10,106,0,0" VerticalAlignment="Top" Width="232"/>
     </Grid>
 </Window>

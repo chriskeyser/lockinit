@@ -3,6 +3,9 @@ using System.Net.Sockets;
 
 namespace LockInitClient
 {
+    /*
+     * Holds state information for asynchrous invocation.
+     */
     class ReceiveState
     {
         public ReceiveState(UdpClient client)

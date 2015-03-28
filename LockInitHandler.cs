@@ -9,15 +9,17 @@ using System.Threading.Tasks;
 
 namespace LockInitClient
 {
+    /*
+     * Mages the interactions with the lock device over udp to complete the initialization
+     * process.
+     */
     public class LockInitHandler
     {
         private const int broadcastPort = 9998;
         private const int listenPort = 9997;
         private const string signature = "LINIT";
         private const string replySig = "LRPLY";
-        private char[] msgDelim = { ':' };
 
-        private readonly StateInformation state;
         private readonly UdpMessaging messaging;
         private readonly UdpClient broadcastClient;
 
@@ -25,9 +27,13 @@ namespace LockInitClient
         private Action<string> deviceCallback;
         private Action<string> logger;
 
+        /*
+         * Constructs a lock handler.  The discoverCallback is called whenever a response to a broadcast
+         * query is received, and the device has not previously been seen.  Status messages are reported back
+         * via the log.
+         */
         public LockInitHandler(Action<string> discoverCallback, Action<string> log)
         {
-            state  = new StateInformation();
             broadcastClient = new UdpClient();
             deviceCallback = discoverCallback;
             logger = log;
@@ -38,33 +44,80 @@ namespace LockInitClient
             });
         }
 
-        private void HandleReceiveMessage(UdpMessage message)
+        private void AddDevice(string deviceId, IPEndPoint devEndpoint)
         {
-            string[] msgParts;
-            int deviceState = ParseHeader(message.Data, out msgParts);
+            deviceCallback(deviceId);
+            discoveredDevices[deviceId] = devEndpoint;
+            logger(string.Format("Discovered: {0}", deviceId));
+        }
 
-            if (state.CurrentState == InitializationState.Assigning && deviceState == (int)InitializationState.Assigning)
+        private string GetDeviceForEndpoint(IPEndPoint endpoint)
+        {
+            string device = (from e in discoveredDevices where e.Value.Equals(endpoint) select e.Key).FirstOrDefault();
+            return device;
+        }
+
+        private void LogDeviceState(IPEndPoint endpoint, string state)
+        {
+            string device = GetDeviceForEndpoint(endpoint);
+            if (device != null)
             {
-                if (msgParts.Length == 3)
-                {
-                    deviceCallback(msgParts[2]);
-                    discoveredDevices[msgParts[2]] = message.Endpoint;
-                    logger(string.Format("Discovered: {0}", msgParts[2]));
-                }
-                else
-                {
-                    logger(string.Format("Protocol Error in InitializeConfig, expected 3 message parts, got: {0}", msgParts.Length));
-                }
+                logger(string.Format("state transition({0}) from {1}", state, device));
+            }
+            else
+            {
+                logger(string.Format("state transition({0}) from unknown device at endpoint {1}", state, endpoint));
             }
         }
 
-        internal bool InitDevice(string device, string mqttServer, int mqttPort)
+        private void HandleReceiveMessage(UdpMessage message)
+        {
+            int startData = 0;
+            int deviceState = ParseHeader(message.Data, out startData);
+
+            if (deviceState == (int)InitializationState.InitializeConfig)
+            {
+                string deviceId = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
+                AddDevice(deviceId, message.Endpoint);
+                LogDeviceState(message.Endpoint, "initializing");
+            }
+            else if(deviceState == (int) InitializationState.TestingConfig)
+            {
+                LogDeviceState(message.Endpoint, "testing");
+            }
+            else if (deviceState == (int)InitializationState.Done)
+            {
+                LogDeviceState(message.Endpoint, "done");
+            }
+            else if (deviceState == (int)InitializationState.Running)
+            {
+                LogDeviceState(message.Endpoint, "running");
+            }
+            else
+            {
+                LogDeviceState(message.Endpoint, string.Format("undefined state({0})", deviceState));
+                string err = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
+            }
+        }
+
+        internal bool InitDevice(string device, string mqttServer, int mqttPort, byte[] key)
         {
             if(this.discoveredDevices.ContainsKey(device))
             {
                 IPEndPoint devEndpoint = this.discoveredDevices[device];
-                var configMsg = string.Format("{0}:{1}:{2}:{3}", signature, (int)InitializationState.InitializeConfig, mqttServer, mqttPort);
-                var message = new UdpMessage(configMsg, devEndpoint);
+                
+                List<Byte> msgData = new List<Byte>();
+                msgData.AddRange(UTF8Encoding.ASCII.GetBytes(signature));
+                msgData.Add((byte)InitializationState.InitializeConfig);
+                byte highVal = (byte)((mqttPort & 0xFF00) >> 8);
+                byte lowVal = (byte) mqttPort;
+                msgData.Add(highVal);
+                msgData.Add(lowVal);
+                //TODO: check on conversion of key value...
+                msgData.AddRange(key);
+                msgData.AddRange(UTF8Encoding.ASCII.GetBytes(mqttServer));
+
+                var message = new UdpMessage(msgData.ToArray(), devEndpoint);
                 messaging.SendMessageAsync(message, sendSize =>
                 {
                     logger(string.Format("Sent init"));
@@ -74,20 +127,27 @@ namespace LockInitClient
             return false;
         }
 
-        private int ParseHeader(string message, out string[] parts)
+        private int ParseHeader(byte[] message, out int next)
         {
-            parts = message.Split(msgDelim);
+            int headerLength = signature.Length + sizeof(byte);
+            next = 0;
 
-            if (parts.Length < 2 || !parts[0].Equals(replySig))
+            if (message.Length >= headerLength)
             {
-                logger(string.Format("ParseHeader: Incorrect init msg: {0}", message));
-            }
-            else
-            {
-                int devState;
-                if (int.TryParse(parts[1], out devState))
+                string header = ASCIIEncoding.ASCII.GetString(message, 0, replySig.Length);
+                int stateInfo = (int) message[replySig.Length];
+
+                if (Enum.IsDefined(typeof(InitializationState), stateInfo))
                 {
-                    return devState;
+                    if (!header.Equals(replySig))
+                    {
+                        logger(string.Format("ParseHeader: Incorrect init msg: {0}", header));
+                    }
+                    else
+                    {
+                        next = headerLength;
+                        return (int)stateInfo;
+                    }
                 }
             }
 
@@ -96,9 +156,11 @@ namespace LockInitClient
 
         public void QueryDevices()
         {
-            var initMsg = string.Format("{0}:{1}", signature, (int)InitializationState.Assigning);
+            List<Byte> msgData = new List<Byte>();
+            msgData.AddRange(UTF8Encoding.ASCII.GetBytes(signature));
+            msgData.Add((byte)InitializationState.Assigning);
 
-            byte[] message = UTF8Encoding.ASCII.GetBytes(initMsg);
+            byte[] message = msgData.ToArray();
             var ep = new IPEndPoint(IPAddress.Broadcast, broadcastPort);
             broadcastClient.SendAsync(message, message.Length, ep).ContinueWith( tr =>
             {

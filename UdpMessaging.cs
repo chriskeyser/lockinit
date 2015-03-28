@@ -8,13 +8,17 @@ using System.Net.Sockets;
 
 namespace LockInitClient
 {
+    /**
+     * Manages messaging at the UDP level, sending and receiving sync or async.  If sync, then messages
+     * are queued and client polls.  If async then a callback is provided for received messages and is
+     * invoked when received.
+     */
     class UdpMessaging
     {
         private readonly Queue<UdpMessage> receivedQueue;
         private IAsyncResult lastReceive;
         private UdpClient udpClient;
         private Func<UdpMessage, bool> msgReceiver;
-
 
         public UdpMessaging(int port)
         {
@@ -25,12 +29,19 @@ namespace LockInitClient
             lastReceive = udpClient.BeginReceive(ReceiveMessage, state);
         }
 
+        /*
+         * Constructs the messaging class. msgReceive is a callback for
+         * messages that are received.
+         */
         public UdpMessaging(int port, Func<UdpMessage, bool> msgReceiver) :
         this(port)
         {
             this.msgReceiver = msgReceiver;
         }
 
+        /**
+         * Callback handler for an async received message.
+         */
         public void ReceiveMessage(IAsyncResult ar)
         {
             if (ar == lastReceive)
@@ -80,15 +91,12 @@ namespace LockInitClient
 
         public void SendMessage(UdpMessage sendMessage)
         {
-            byte[] message = UTF8Encoding.ASCII.GetBytes(sendMessage.Data);
-            udpClient.Send(message, message.Length, sendMessage.Endpoint);
+            udpClient.Send(sendMessage.Data, sendMessage.Data.Length, sendMessage.Endpoint);
         }
 
         public void SendMessageAsync(UdpMessage sendMessage, Action<int> callback)
         {
-            byte[] message = UTF8Encoding.ASCII.GetBytes(sendMessage.Data);
-
-            udpClient.SendAsync(message, message.Length, sendMessage.Endpoint).ContinueWith(task => 
+            udpClient.SendAsync(sendMessage.Data, sendMessage.Data.Length, sendMessage.Endpoint).ContinueWith(task => 
             {
                 if (task.IsCompleted)
                 {

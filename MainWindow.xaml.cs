@@ -19,44 +19,117 @@ namespace LockInitClient
         private Auth0User loggedInUser;
         private LockInitHandler handler;
         private LockService lockService;
-        private string encryptKey = null;
+        private bool isListingRegisteredLocks = false;
         ObservableCollection<String> deviceIds = new ObservableCollection<String>();
+        ObservableCollection<String> logs = new ObservableCollection<String>();
 
         public MainWindow()
         {
             InitializeComponent();
+            this.LogList.ItemsSource = logs;
+        }
+
+        private void OnClearDevice(object sender, RoutedEventArgs e)
+        {
+            //TODO: should reset device as well?  If so how is it safe to do that? From the 
+            // serivce with encrpted command?  Or should assume device reset happens via physical
+            // interaction with device?
+            string device = this.DiscoveredDevicesList.SelectedItem as string;
+            string mqttServer = null;
+            int mqttPort;
+
+            if (isListingRegisteredLocks && device != null)
+            {
+                if (GetServerAndPort(out mqttServer, out mqttPort))
+                {
+                    var serviceAddr = mqttServer + ":" + "3000";
+                    lockService = new LockService(loggedInUser, serviceAddr);
+                    lockService.DeviceDeregistrationAsync(device, (succeeded, errCode) =>
+                    {
+                        if (succeeded)
+                        {
+                            this.AddStatus("deregistered device");
+                            Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                this.deviceIds.Remove(device);
+                            }));
+                        }
+                        else
+                        {
+                            this.AddStatus(string.Format("deregistered failed, error: {0}", errCode));
+                        }
+                    });
+                }
+            }
+            else
+            {
+                AddStatus("List and select a lock");
+            }
+        }
+
+        private void OnListDevices(object sender, RoutedEventArgs e)
+        {
+            string mqttServer = null; 
+            int mqttPort;
+
+            if (GetServerAndPort(out mqttServer, out mqttPort))
+            {
+                var serviceAddr = mqttServer + ":" + "3000";
+                lockService = new LockService(loggedInUser, serviceAddr);
+                lockService.ListLocksAync((succeeded, locks, errCode) =>
+                {
+                    if (succeeded)
+                    {
+                        isListingRegisteredLocks = true;
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            this.AddStatus("Got configured locks");
+                            this.DeviceListTitle.Content = "Configured Locks";
+                            this.deviceIds.Clear();
+
+                            foreach(var lockid in locks) 
+                            {
+                                this.deviceIds.Add(lockid);
+                            }
+                        }));
+                    }
+                    else
+                    {
+                        this.AddStatus("Init failed to service, error: " + errCode);
+                    }
+                });
+            }
         }
 
         private void OnInitializeDevice(object sender, RoutedEventArgs e)
         {
             string device = this.DiscoveredDevicesList.SelectedItem as string;
+            string mqttServer = null;
+            int mqttPort;
 
-            if (device != null)
+            if (!isListingRegisteredLocks && device != null)
             {
-                var mqttServer = MqttServerText.Text;
-                var mqttPortStr = MqttPortText.Text;
-                int mqttPortVal;
-                bool isValidPort = int.TryParse(mqttPortStr, out mqttPortVal);
-
-                if(!string.IsNullOrWhiteSpace(mqttServer) && isValidPort)
+                if (GetServerAndPort(out mqttServer, out mqttPort))
                 {
-                    handler.InitDevice(device, mqttServer, mqttPortVal);
-                }
-                else
-                {
-                    AddStatus("Enter valid port and ip or domain for mqtt server");
+                    var serviceAddr = mqttServer + ":" + "3000";
+                    lockService = new LockService(loggedInUser, serviceAddr);
+                    lockService.DeviceRegistrationAsync(device, (succeeded, key, errCode) =>
+                    {
+                        if (succeeded)
+                        {
+                            this.AddStatus("initialized with service, setting device");
+                            handler.InitDevice(device, mqttServer, mqttPort, key);
+                        }
+                        else
+                        {
+                            this.AddStatus("Init failed to service, error: " + errCode);
+                        }
+                    });
                 }
             }
             else
             {
-                lockService = new LockService(loggedInUser, MqttServerText.Text + ":" + "3000");
-                string dev = "123";
-                lockService.StartDeviceRegistration(dev, (result, key) =>
-                {
-                    encryptKey = key;
-                });
-
-                AddStatus("A device was not selected \n");
+                AddStatus("Discover and select a lock");
             }
         }
 
@@ -70,13 +143,18 @@ namespace LockInitClient
                 }
                 else
                 {
-                    AddStatus("\nlogged in to Auth0 as: " +(string)loggedInResult.Result.Profile["email"] + "\n");
                     loggedInUser = loggedInResult.Result;
+                    AddStatus("\nlogged in to Auth0 as: " 
+                        + (string)loggedInUser.Profile["email"] + 
+                        " id: " +  (string) loggedInUser.Profile["user_id"]);
+ 
                     lockService = new LockService(loggedInUser, MqttServerText.Text + ":" + "3000");
                     this.LoginButton.Visibility = System.Windows.Visibility.Hidden;
                     InitiateDiscover();
                     this.InitializeButton.IsEnabled = true;
                     this.FindDevicesButton.IsEnabled = true;
+                    this.ListCurrentLocksButton.IsEnabled = true;
+                    this.ClearLockButton.IsEnabled = true;
                 }
             },
             TaskScheduler.FromCurrentSynchronizationContext());
@@ -84,12 +162,16 @@ namespace LockInitClient
 
         private void OnFindDevices(object sender, RoutedEventArgs e)
         {
+            isListingRegisteredLocks = false;
+            this.deviceIds.Clear();
             handler.QueryDevices();
         }
 
         private void AddStatus(string status)
         {
-            this.StatusOutput.Text = this.StatusOutput.Text + status + "\n";
+            Dispatcher.BeginInvoke(new Action(() => {
+                logs.Insert(0, status);
+            }));
         }
 
         private void InitiateDiscover()
@@ -104,14 +186,29 @@ namespace LockInitClient
                         }
                     }));
                 },
-                message =>
-                {
-                    Dispatcher.BeginInvoke(new Action(() => {
-                        AddStatus(message);
-                    }));
-                });
+                AddStatus
+             );
+
             this.DiscoveredDevicesList.ItemsSource = deviceIds;
             handler.QueryDevices();
+        }
+
+
+        private bool GetServerAndPort(out string mqttServer, out int mqttPort)
+        {
+            string device = this.DiscoveredDevicesList.SelectedItem as string;
+            mqttServer = MqttServerText.Text;
+            var mqttPortStr = MqttPortText.Text;
+            bool isValidPort = int.TryParse(mqttPortStr, out mqttPort);
+
+            if (!string.IsNullOrWhiteSpace(mqttServer) && isValidPort)
+            {
+                return true;
+            }
+
+            AddStatus("Server and port not configured");
+
+            return false;
         }
     }
 }
