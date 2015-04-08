@@ -23,7 +23,6 @@ namespace LockInitClient
                 {
                     strData = ASCIIEncoding.ASCII.GetString(Data);
                 }
-
                 return strData;
             }
         }

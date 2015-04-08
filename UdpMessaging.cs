@@ -65,7 +65,6 @@ namespace LockInitClient
                 {
                     receivedQueue.Enqueue(message);
                 }
-
                 lastReceive = udpClient.BeginReceive(ReceiveMessage, state);
             }
             else
@@ -85,7 +84,6 @@ namespace LockInitClient
             {
                 throw new InvalidOperationException("Reading from an empty queue");
             }
-
             return receivedQueue.Dequeue();
         }
 

@@ -14,6 +14,11 @@ namespace LockInitClient
          public string deviceId { get; set; }
     }
 
+    public class LockMsg
+    {
+        public bool lockState;
+    }
+
     public class LockService
     {
         private Auth0.Windows.Auth0User user;
@@ -22,6 +27,8 @@ namespace LockInitClient
         private readonly string deviceRegistrationPath = "/api/device/register";
         private readonly string deviceDeregistrationPath = "/api/device/deregister";
         private readonly string listDevicePath = "/api/device/list";
+        private readonly string lockDevicePath = "/api/device/{0}/lock";
+        private readonly string unlockDevicePath = "/api/device/{0}/lock";
 
         public LockService(Auth0.Windows.Auth0User user, string serverBase)
         {
@@ -39,7 +46,6 @@ namespace LockInitClient
                 if (IsSuccessful("ListLockAsync", requestTask))
                 {
                     HttpResponseMessage response = requestTask.Result;
-
                     if (response.IsSuccessStatusCode)
                     {
                         response.Content.ReadAsStringAsync().ContinueWith((readTask) =>
@@ -47,6 +53,40 @@ namespace LockInitClient
                             var result = Newtonsoft.Json.Linq.JObject.Parse(readTask.Result);
                             List<string> locks = (result["Locks"].ToObject<List<string>>());
                             callback(true, locks, response.StatusCode.ToString());
+                        });
+                    }
+                    else
+                    {
+                        System.Diagnostics.Trace.TraceError("http failure status code: {0} {1}", response.StatusCode, response.ReasonPhrase);
+                        callback(false, null, response.ReasonPhrase);
+                    }
+                }
+                else
+                {
+                    callback(false, null, requestTask.Exception.Message);
+                }
+            });
+        }
+
+        public void LockDeviceAsync(string lockId, bool lockStatus, Action<bool, string, string> callback)
+        {
+            var lockMsg = new LockMsg() { lockState = lockStatus };
+
+            var path = lockStatus ? string.Format(lockDevicePath, lockId) : string.Format(unlockDevicePath, lockId);
+
+            client.PutAsJsonAsync<LockMsg>(GetUri(path), lockMsg).ContinueWith((requestTask) =>
+            {
+                if (IsSuccessful("LockDeviceAsync", requestTask))
+                {
+                    HttpResponseMessage response = requestTask.Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        response.Content.ReadAsStringAsync().ContinueWith((readTask) =>
+                        {
+                            var result = Newtonsoft.Json.Linq.JObject.Parse(readTask.Result);
+                            string status = result["status"].ToObject<string>();
+                            callback(true, status, response.StatusCode.ToString());
                         });
                     }
                     else

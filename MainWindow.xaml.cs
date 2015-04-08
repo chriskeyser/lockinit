@@ -29,90 +29,140 @@ namespace LockInitClient
             this.LogList.ItemsSource = logs;
         }
 
-        private void OnClearDevice(object sender, RoutedEventArgs e)
+        
+        private bool GetSelectedLock(out string device)
         {
-            //TODO: should reset device as well?  If so how is it safe to do that? From the 
-            // serivce with encrpted command?  Or should assume device reset happens via physical
-            // interaction with device?
-            string device = this.DiscoveredDevicesList.SelectedItem as string;
-            string mqttServer = null;
-            int mqttPort;
+            device = this.DiscoveredDevicesList.SelectedItem as string;
 
             if (isListingRegisteredLocks && device != null)
             {
-                if (GetServerAndPort(out mqttServer, out mqttPort))
-                {
-                    var serviceAddr = mqttServer + ":" + "3000";
-                    lockService = new LockService(loggedInUser, serviceAddr);
-                    lockService.DeviceDeregistrationAsync(device, (succeeded, errCode) =>
-                    {
-                        if (succeeded)
-                        {
-                            this.AddStatus("deregistered device");
-                            Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                this.deviceIds.Remove(device);
-                            }));
-                        }
-                        else
-                        {
-                            this.AddStatus(string.Format("deregistered failed, error: {0}", errCode));
-                        }
-                    });
-                }
+                return true;
             }
             else
             {
-                AddStatus("List and select a lock");
+                AddStatus("Please List and select a lock");
+                return false;
             }
         }
 
-        private void OnListDevices(object sender, RoutedEventArgs e)
+        private bool GetInitLock(out string device)
         {
-            string mqttServer = null; 
-            int mqttPort;
+            device = this.DiscoveredDevicesList.SelectedItem as string;
 
-            if (GetServerAndPort(out mqttServer, out mqttPort))
+            if (!isListingRegisteredLocks && device != null)
             {
-                var serviceAddr = mqttServer + ":" + "3000";
-                lockService = new LockService(loggedInUser, serviceAddr);
-                lockService.ListLocksAync((succeeded, locks, errCode) =>
+                return true;
+            }
+            else
+            {
+                AddStatus("Please find new locks and select a lock");
+                return false;
+            }
+        }
+
+        private void OnLock(object sender, RoutedEventArgs e)
+        {
+            string deviceId;
+
+            if (GetSelectedLock(out deviceId))
+            {
+                this.lockService.LockDeviceAsync(deviceId, true, (succeeded, message, errCode) =>
                 {
                     if (succeeded)
                     {
-                        isListingRegisteredLocks = true;
-                        Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            this.AddStatus("Got configured locks");
-                            this.DeviceListTitle.Content = "Configured Locks";
-                            this.deviceIds.Clear();
-
-                            foreach(var lockid in locks) 
-                            {
-                                this.deviceIds.Add(lockid);
-                            }
-                        }));
+                        this.AddStatus("locked device: " + message);
                     }
                     else
                     {
-                        this.AddStatus("Init failed to service, error: " + errCode);
+                        this.AddStatus(string.Format("lock device failed, error: {0}", errCode));
                     }
                 });
             }
         }
 
+        private void OnUnlock(object sender, RoutedEventArgs e)
+        {
+            string deviceId;
+
+            if (GetSelectedLock(out deviceId))
+            {
+                this.lockService.LockDeviceAsync(deviceId, false, (succeeded, message, errCode) =>
+                {
+                    if (succeeded)
+                    {
+                        this.AddStatus("unlocked device: " + message);
+                    }
+                    else
+                    {
+                        this.AddStatus(string.Format("unlock device failed, error: {0}", errCode));
+                    }
+                });
+            }
+        }
+
+        private void OnClearDevice(object sender, RoutedEventArgs e)
+        {
+            //TODO: should reset device as well?  If so how is it safe to do that? From the 
+            // serivce with encrpted command?  Or should assume device reset happens via physical
+            // interaction with device?
+            string device;
+
+            if (GetSelectedLock(out device))
+            {
+                lockService.DeviceDeregistrationAsync(device, (succeeded, errCode) =>
+                {
+                    if (succeeded)
+                    {
+                        this.AddStatus("deregistered device");
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            this.deviceIds.Remove(device);
+                        }));
+                    }
+                    else
+                    {
+                        this.AddStatus(string.Format("deregistered failed, error: {0}", errCode));
+                    }
+                });
+            }
+        }
+
+        private void OnListDevices(object sender, RoutedEventArgs e)
+        {
+            lockService.ListLocksAync((succeeded, locks, errCode) =>
+            {
+                if (succeeded)
+                {
+                    isListingRegisteredLocks = true;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        this.AddStatus("Got configured locks");
+                        this.DeviceListTitle.Content = "Configured Locks";
+                        this.deviceIds.Clear();
+
+                        foreach(var lockid in locks) 
+                        {
+                            this.deviceIds.Add(lockid);
+                        }
+                    }));
+                }
+                else
+                {
+                    this.AddStatus("Init failed to service, error: " + errCode);
+                }
+            });
+        }
+
         private void OnInitializeDevice(object sender, RoutedEventArgs e)
         {
-            string device = this.DiscoveredDevicesList.SelectedItem as string;
-            string mqttServer = null;
+            string device;
+            string mqttServer;
             int mqttPort;
 
-            if (!isListingRegisteredLocks && device != null)
+            if (GetInitLock(out device))
             {
                 if (GetServerAndPort(out mqttServer, out mqttPort))
                 {
-                    var serviceAddr = mqttServer + ":" + "3000";
-                    lockService = new LockService(loggedInUser, serviceAddr);
                     lockService.DeviceRegistrationAsync(device, (succeeded, key, errCode) =>
                     {
                         if (succeeded)
@@ -126,10 +176,6 @@ namespace LockInitClient
                         }
                     });
                 }
-            }
-            else
-            {
-                AddStatus("Discover and select a lock");
             }
         }
 

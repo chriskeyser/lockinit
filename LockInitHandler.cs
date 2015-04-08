@@ -75,28 +75,26 @@ namespace LockInitClient
             int startData = 0;
             int deviceState = ParseHeader(message.Data, out startData);
 
-            if (deviceState == (int)InitializationState.InitializeConfig)
-            {
-                string deviceId = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
-                AddDevice(deviceId, message.Endpoint);
-                LogDeviceState(message.Endpoint, "initializing");
-            }
-            else if(deviceState == (int) InitializationState.TestingConfig)
-            {
-                LogDeviceState(message.Endpoint, "testing");
-            }
-            else if (deviceState == (int)InitializationState.Done)
-            {
-                LogDeviceState(message.Endpoint, "done");
-            }
-            else if (deviceState == (int)InitializationState.Running)
-            {
-                LogDeviceState(message.Endpoint, "running");
-            }
-            else
-            {
-                LogDeviceState(message.Endpoint, string.Format("undefined state({0})", deviceState));
-                string err = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
+            switch((InitializationState)deviceState)
+            { 
+                case InitializationState.InitializeConfig:
+                    string deviceId = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
+                    AddDevice(deviceId, message.Endpoint);
+                    LogDeviceState(message.Endpoint, "initializing");
+                    break;
+                case InitializationState.TestingConfig:
+                    LogDeviceState(message.Endpoint, "testing");
+                    break;
+                case InitializationState.Done:
+                    LogDeviceState(message.Endpoint, "done");
+                    break;
+                case InitializationState.Running:
+                    LogDeviceState(message.Endpoint, "running");
+                    break;
+                default:
+                    LogDeviceState(message.Endpoint, string.Format("undefined state({0})", deviceState));
+                    string err = ASCIIEncoding.ASCII.GetString(message.Data, startData, message.Data.Length - startData);
+                    break;
             }
         }
 
@@ -104,16 +102,16 @@ namespace LockInitClient
         {
             if(this.discoveredDevices.ContainsKey(device))
             {
-                IPEndPoint devEndpoint = this.discoveredDevices[device];
-                
+                IPEndPoint devEndpoint = this.discoveredDevices[device];              
                 List<Byte> msgData = new List<Byte>();
+                byte highVal = (byte)((mqttPort & 0xFF00) >> 8);
+                byte lowVal = (byte)mqttPort;
+
                 msgData.AddRange(UTF8Encoding.ASCII.GetBytes(signature));
                 msgData.Add((byte)InitializationState.InitializeConfig);
-                byte highVal = (byte)((mqttPort & 0xFF00) >> 8);
-                byte lowVal = (byte) mqttPort;
                 msgData.Add(highVal);
                 msgData.Add(lowVal);
-                //TODO: check on conversion of key value...
+
                 msgData.AddRange(key);
                 msgData.AddRange(UTF8Encoding.ASCII.GetBytes(mqttServer));
 
@@ -123,7 +121,6 @@ namespace LockInitClient
                     logger(string.Format("Sent init"));
                 });
             }
-
             return false;
         }
 

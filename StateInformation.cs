@@ -8,7 +8,7 @@ using System.Net;
 namespace LockInitClient
 {
     /*
-     * manages the state machine for initialization a device.
+     * The states for initialization a device.
      */
     public enum InitializationState
     {
