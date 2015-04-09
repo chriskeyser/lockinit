@@ -102,19 +102,31 @@ namespace LockInitClient
         {
             if(this.discoveredDevices.ContainsKey(device))
             {
-                IPEndPoint devEndpoint = this.discoveredDevices[device];              
+
+                IPEndPoint devEndpoint = this.discoveredDevices[device];                              
                 List<Byte> msgData = new List<Byte>();
-                byte highVal = (byte)((mqttPort & 0xFF00) >> 8);
-                byte lowVal = (byte)mqttPort;
 
                 msgData.AddRange(UTF8Encoding.ASCII.GetBytes(signature));
                 msgData.Add((byte)InitializationState.InitializeConfig);
+
+                byte highVal = (byte)((mqttPort & 0xFF00) >> 8);
+                byte lowVal = (byte)mqttPort;
                 msgData.Add(highVal);
                 msgData.Add(lowVal);
 
+                TimeSpan t = (DateTime.UtcNow - new DateTime(1970, 1, 1));
+                long timestamp = (long)t.TotalSeconds;
+                byte b1 = (byte)((timestamp & 0xFF000000) >> 24);
+                byte b2 = (byte)((timestamp & 0x00FF0000) >> 16);
+                byte b3 = (byte)((timestamp & 0x0000FF00) >> 8);
+                byte b4 = (byte)(timestamp);
+                msgData.Add(b1);
+                msgData.Add(b2);
+                msgData.Add(b3);
+                msgData.Add(b4);
+                logger(string.Format("Time: {0}", timestamp));
                 msgData.AddRange(key);
                 msgData.AddRange(UTF8Encoding.ASCII.GetBytes(mqttServer));
-
                 var message = new UdpMessage(msgData.ToArray(), devEndpoint);
                 messaging.SendMessageAsync(message, sendSize =>
                 {
